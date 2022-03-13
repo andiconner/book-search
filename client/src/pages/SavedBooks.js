@@ -12,18 +12,48 @@ import { REMOVE_BOOK } from '../utils/mutations';
 
 
 const SavedBooks = () => {
-  const [userData, setUserData] = useState({});
-  const { data: userData } = useQuery(QUERY_GET_ME);
-  const loggedIn = Auth.loggedIn();
+  const { loading, data } = useQuery(GET_ME);
+  const [deleteBook] = useMutation(REMOVE_BOOK);
+  const userData = data?.me || {};
 
-  const handleDeleteBook = useMutation(REMOVE_BOOK, {
-    variables: { bookId }
-})
-if (loading) return <div>...loading</div>
-if (error) return <div>Error</div>
+  if(!userData?.username) {
+    return (
+      <h4>
+        You need to be logged in to see this page. Use the navigation links above to sign up or log in!
+      </h4>
+    );
+  }
+
+  // create function that accepts the book's mongo _id value as param and deletes the book from the database
+  const handleDeleteBook = async (bookId) => {
     const token = Auth.loggedIn() ? Auth.getToken() : null;
-    return userData.books.map(({bookId, authors, description, title, image, link}) => {
 
+    if (!token) {
+      return false;
+    }
+
+    try {
+      await deleteBook({
+        variables: {bookId: bookId},
+        update: cache => {
+          const data = cache.readQuery({ query: GET_ME });
+          const userDataCache = data.me;
+          const savedBooksCache = userDataCache.savedBooks;
+          const updatedBookCache = savedBooksCache.filter((book) => book.bookId !== bookId);
+          data.me.savedBooks = updatedBookCache;
+          cache.writeQuery({ query: GET_ME , data: {data: {...data.me.savedBooks}}})
+        }
+      });
+      // upon success, remove book's id from localStorage
+      removeBookId(bookId);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+  // if data isn't here yet, say so
+  if (loading) {
+    return <h2>LOADING...</h2>;
+  }
 
   return (
     <>
@@ -48,7 +78,7 @@ if (error) return <div>Error</div>
                   <Card.Title>{book.title}</Card.Title>
                   <p className='small'>Authors: {book.authors}</p>
                   <Card.Text>{book.description}</Card.Text>
-                  <Button className='btn-block btn-danger' nClick={handleDeleteBook}>
+                  <Button className='btn-block btn-danger' onClick={handleDeleteBook}>
                     Delete this Book!
                   </Button>
                 </Card.Body>
@@ -59,7 +89,7 @@ if (error) return <div>Error</div>
       </Container>
     </>
   );
-});
-}
+};
+
 
 export default SavedBooks;
